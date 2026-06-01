@@ -382,6 +382,33 @@ body {
   }
 }
 
+.dashboard-header__clock {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+@media (min-width: 768px) {
+  .dashboard-header__clock {
+    display: flex;
+  }
+}
+
+.dashboard-header__date {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.dashboard-header__time {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 /* ===== CONNECTION STATUS ===== */
 .connection-status {
   display: flex;
@@ -573,6 +600,124 @@ body {
   font-weight: 500;
 }
 
+/* ===== BUS PANEL ===== */
+.bus-panel-wrapper {
+  margin-top: 8px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.bus-panel {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scrollbar-width: thin;
+}
+
+.bus-card {
+  min-width: 240px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.bus-card:hover {
+  border-color: var(--border-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.bus-card--active {
+  border-color: var(--accent-green);
+  background: rgba(64, 145, 108, 0.05);
+  box-shadow: 0 0 0 1px var(--accent-green);
+}
+
+.bus-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.bus-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bus-card__plate {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  margin-top: 4px;
+  display: inline-block;
+}
+
+.bus-card__density {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.bus-card__content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.bus-card__metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.bus-card__value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.bus-card__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.bus-card__info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.bus-card__direction {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  background: rgba(96, 165, 250, 0.1);
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.bus-card__location {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ===== DASHBOARD GRID (MAP + CHART) ===== */
 .dashboard-grid {
   display: grid;
@@ -688,6 +833,85 @@ body {
   color: var(--text-dim);
   margin-top: 8px;
 }
+
+.map-popup__section {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.map-popup__section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.map-popup__prediction {
+  background: rgba(64, 145, 108, 0.05);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.prediction-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.prediction-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+.prediction-metrics {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.prediction-main {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.prediction-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.prediction-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.confidence-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.confidence-high {
+  background: rgba(82, 183, 136, 0.15);
+  color: var(--accent-green-light);
+}
+.confidence-medium {
+  background: rgba(233, 196, 106, 0.15);
+  color: var(--accent-yellow);
+}
+.confidence-low {
+  background: rgba(231, 111, 81, 0.15);
+  color: var(--accent-red);
+}
+.confidence-no_data {
+  background: rgba(107, 114, 128, 0.15);
+  color: var(--text-dim);
+}
+
 
 /* ===== CHART PANEL ===== */
 .chart-panel {

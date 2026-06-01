@@ -7,6 +7,7 @@ import { useMqtt } from '@/hooks/useMqtt';
 import { useSimulator } from '@/hooks/useSimulator';
 import HalteSelector from '@/components/dashboard/HalteSelector';
 import MetricCards from '@/components/dashboard/MetricCards';
+import BusPanel from '@/components/dashboard/BusPanel';
 import ChartPanel from '@/components/dashboard/ChartPanel';
 
 // Dynamic import Leaflet (no SSR)
@@ -23,9 +24,11 @@ export default function DashboardPage() {
   const { connect: connectMqtt } = useMqtt();
   const { start: startSim } = useSimulator();
   const addChartPoint = useHalteStore(state => state.addChartPoint);
+  const flushRecords = useHalteStore(state => state.flushRecords);
   const selectedHalteId = useHalteStore(state => state.selectedHalteId);
   const didInit = useRef(false);
   const chartIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto-connect MQTT with simulator fallback
   useEffect(() => {
@@ -68,10 +71,27 @@ export default function DashboardPage() {
     };
   }, [addChartPoint, selectedHalteId]);
 
+  // SQLite flush interval — batch-persist buffered records every 10 seconds
+  useEffect(() => {
+    flushIntervalRef.current = setInterval(() => {
+      flushRecords();
+    }, 10000);
+
+    // Also flush on unmount (page navigation, logout)
+    return () => {
+      if (flushIntervalRef.current) {
+        clearInterval(flushIntervalRef.current);
+      }
+      // Final flush
+      flushRecords();
+    };
+  }, [flushRecords]);
+
   return (
     <>
       <HalteSelector />
       <MetricCards />
+      <BusPanel />
       <div className="dashboard-grid">
         <MapPanel />
         <ChartPanel />

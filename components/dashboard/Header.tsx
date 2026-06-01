@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useHalteStore } from '@/store/halteStore';
 import { useSimulator } from '@/hooks/useSimulator';
@@ -7,11 +8,24 @@ import { useMqtt } from '@/hooks/useMqtt';
 import ConnectionStatus from '@/components/ui/ConnectionStatus';
 import SimulatorToggle from '@/components/ui/SimulatorToggle';
 
+function useLiveClock() {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return now;
+}
+
 export default function Header() {
   const router = useRouter();
   const { connectionStatus, isSimulatorActive, resetAll } = useHalteStore();
   const { start: startSim, stop: stopSim } = useSimulator();
   const { disconnect: disconnectMqtt } = useMqtt();
+  const now = useLiveClock();
 
   const handleSimToggle = () => {
     if (isSimulatorActive) {
@@ -30,6 +44,19 @@ export default function Header() {
     router.push('/login');
   };
 
+  const dateStr = now ? now.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }) : '';
+
+  const timeStr = now ? now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }) : '';
+
   return (
     <header className="dashboard-header">
       <div className="dashboard-header__brand">
@@ -38,6 +65,11 @@ export default function Header() {
           <h1 className="dashboard-header__title">TransUm Bandung</h1>
           <p className="dashboard-header__subtitle">Koridor 5 — UNPAD Dipatiukur ↔ UNPAD Jatinangor</p>
         </div>
+      </div>
+
+      <div className="dashboard-header__clock">
+        <span className="dashboard-header__date">📅 {dateStr}</span>
+        <span className="dashboard-header__time">🕐 {timeStr}</span>
       </div>
 
       <div className="dashboard-header__controls">

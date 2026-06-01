@@ -3,11 +3,11 @@
 import { useEffect, useRef } from 'react';
 import mqtt, { MqttClient } from 'mqtt';
 import { useHalteStore } from '@/store/halteStore';
-import type { MqttPayload } from '@/types';
+import type { MqttPayload, BusMqttPayload } from '@/types';
 
 export function useMqtt() {
   const clientRef = useRef<MqttClient | null>(null);
-  const { setConnectionStatus, updateHalteState } = useHalteStore();
+  const { setConnectionStatus, updateHalteState, updateBusState } = useHalteStore();
 
   const connect = async () => {
     // Ambil config dari API route (agar kredensial tidak expose ke client)
@@ -34,13 +34,23 @@ export function useMqtt() {
     client.on('connect', () => {
       setConnectionStatus('connected');
       client.subscribe(config.topic, { qos: 0 });
+      if (config.busTopic) {
+        client.subscribe(config.busTopic, { qos: 0 });
+      }
     });
 
-    client.on('message', (_topic: string, payload: Buffer) => {
+    client.on('message', (topic: string, payload: Buffer) => {
       try {
-        const data = JSON.parse(payload.toString()) as MqttPayload;
-        if (data.device_id && data.data) {
-          updateHalteState(data);
+        if (topic.includes('/halte/')) {
+          const data = JSON.parse(payload.toString()) as MqttPayload;
+          if (data.device_id && data.data) {
+            updateHalteState(data);
+          }
+        } else if (topic.includes('/bus/')) {
+          const data = JSON.parse(payload.toString()) as BusMqttPayload;
+          if (data.device_id && data.data) {
+            updateBusState(data);
+          }
         }
       } catch {
         // Ignore non-JSON messages

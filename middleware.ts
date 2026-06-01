@@ -6,7 +6,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Rute yang dilindungi
-  const protectedPaths = ['/dashboard', '/api/mqtt-config'];
+  const protectedPaths = ['/dashboard', '/api/mqtt-config', '/api/data'];
   const isProtected = protectedPaths.some(p => pathname.startsWith(p));
 
   if (!isProtected) return NextResponse.next();
@@ -34,5 +34,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/api/mqtt-config'],
+  matcher: ['/dashboard/:path*', '/api/mqtt-config', '/api/data/:path*'],
 };

@@ -8,6 +8,7 @@ export async function GET() {
     username: process.env.MQTT_USERNAME ?? '',
     password: process.env.MQTT_PASSWORD ?? '',
     topic: 'transumbdg/koridor5/halte/#',
+    busTopic: 'transumbdg/koridor5/bus/#',
     clientIdPrefix: 'transum_dashboard_',
     reconnectPeriod: 5000,
     connectTimeout: 8000,

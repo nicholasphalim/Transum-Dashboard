@@ -1,10 +1,18 @@
 import type { DensityLevel, DensityColors } from '@/types';
 import { DENSITY_THRESHOLDS } from './halte-data';
+import { BUS_DENSITY_THRESHOLDS } from './bus-data';
 
 export function getDensityLevel(total: number): DensityLevel {
-  if (total <= 0) return 'unknown';
+  if (total < 0 || isNaN(total)) return 'unknown';
   if (total <= DENSITY_THRESHOLDS.SEPI) return 'sepi';
   if (total <= DENSITY_THRESHOLDS.NORMAL) return 'normal';
+  return 'penuh';
+}
+
+export function getBusDensityLevel(total: number): DensityLevel {
+  if (total < 0 || isNaN(total)) return 'unknown';
+  if (total <= BUS_DENSITY_THRESHOLDS.SEPI) return 'sepi';
+  if (total <= BUS_DENSITY_THRESHOLDS.NORMAL) return 'normal';
   return 'penuh';
 }
 
