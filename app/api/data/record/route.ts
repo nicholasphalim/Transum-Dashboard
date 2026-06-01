@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       source,
     }));
 
-    const count = insertRecords(inserts);
+    const count = await insertRecords(inserts);
 
     return NextResponse.json({ success: true, inserted: count });
   } catch (error) {

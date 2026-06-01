@@ -12,12 +12,12 @@ import { predictNextHour, seedHistoricalData } from '@/lib/prediction';
 export async function POST(request: Request) {
   try {
     // Seed historical data on first call if database is empty
-    seedHistoricalData();
+    await seedHistoricalData();
 
     const body = await request.json();
     const { currentStates = {}, halte_id } = body;
 
-    const predictions = predictNextHour(currentStates, halte_id);
+    const predictions = await predictNextHour(currentStates, halte_id);
 
     return NextResponse.json({
       predictions,
@@ -34,12 +34,12 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    seedHistoricalData();
+    await seedHistoricalData();
 
     const { searchParams } = new URL(request.url);
     const halteId = searchParams.get('halte_id');
 
-    const predictions = predictNextHour({}, halteId);
+    const predictions = await predictNextHour({}, halteId);
 
     return NextResponse.json({
       predictions,

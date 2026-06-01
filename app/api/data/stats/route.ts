@@ -11,8 +11,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const halteId = searchParams.get('halte_id');
 
-    const hourlyAverages = getHourlyStats(halteId);
-    const totalRecords = getRecordCount();
+    const hourlyAverages = await getHourlyStats(halteId);
+    const totalRecords = await getRecordCount();
 
     return NextResponse.json({
       halte_id: halteId ?? 'all',

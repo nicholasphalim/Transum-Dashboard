@@ -14,12 +14,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 });
     }
 
-    const existingUser = getUserByUsername(username);
+    const existingUser = await getUserByUsername(username);
     if (existingUser) {
       return NextResponse.json({ error: 'Username is already taken' }, { status: 400 });
     }
 
-    const existingEmail = getUserByEmail(email);
+    const existingEmail = await getUserByEmail(email);
     if (existingEmail) {
       return NextResponse.json({ error: 'Email is already registered' }, { status: 400 });
     }
@@ -27,7 +27,11 @@ export async function POST(request: Request) {
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(password, salt);
 
-    createUser(username, email, hash);
+    const userId = await createUser(username, email, hash);
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'Gagal membuat akun' }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, message: 'Registration successful' });
   } catch (error: any) {

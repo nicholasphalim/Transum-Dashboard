@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const records = getHistory(halteId, hours);
+    const records = await getHistory(halteId, hours);
 
     return NextResponse.json({
       halte_id: halteId ?? 'all',

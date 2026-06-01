@@ -19,10 +19,10 @@ export interface PredictionResult {
  * Predict passenger count at each halte 1 hour from now.
  * Uses weighted historical averages from SQLite.
  */
-export function predictNextHour(
+export async function predictNextHour(
   currentStates: Record<string, { total_saat_ini: number; masuk: number; keluar: number }>,
   targetHalteId?: string | null,
-): PredictionResult[] {
+): Promise<PredictionResult[]> {
   const now = new Date();
   const targetHour = (now.getHours() + 1) % 24;
   const targetDay = now.getDay(); // 0=Sun, 6=Sat
@@ -37,7 +37,7 @@ export function predictNextHour(
     const halte = HALTE_LIST.find(h => h.id === halteId);
     if (!halte) continue;
 
-    const stats = getHourlyStats(halteId) as Array<{
+    const stats = (await getHourlyStats(halteId)) as Array<{
       halte_id: string;
       hour: number;
       day_of_week: number;
@@ -142,8 +142,8 @@ export function predictNextHour(
  * work immediately in demo mode (without waiting days for real data).
  * Generates 7 days of data at 5-minute intervals for all halte.
  */
-export function seedHistoricalData(): number {
-  const count = getRecordCount();
+export async function seedHistoricalData(): Promise<number> {
+  const count = await getRecordCount();
   if (count > 100) {
     // Already has data, skip seeding
     return 0;
@@ -206,7 +206,7 @@ export function seedHistoricalData(): number {
   let inserted = 0;
   for (let i = 0; i < records.length; i += 1000) {
     const batch = records.slice(i, i + 1000);
-    inserted += insertRecords(batch);
+    inserted += await insertRecords(batch);
   }
 
   return inserted;

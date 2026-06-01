@@ -24,9 +24,9 @@ export async function POST(request: Request) {
     }
   } else {
     // Cari berdasarkan username, jika tidak ketemu cari berdasarkan email
-    let user = getUserByUsername(username);
+    let user = await getUserByUsername(username);
     if (!user && username.includes('@')) {
-      user = getUserByEmail(username);
+      user = await getUserByEmail(username);
     }
 
     if (!user) {

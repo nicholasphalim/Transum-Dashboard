@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
 import { divIcon } from 'leaflet';
 import { useHalteStore } from '@/store/halteStore';
@@ -37,18 +37,23 @@ function MapController() {
   const busState = useHalteStore(state => selectedBusId ? state.busStates[selectedBusId] : null);
 
   useEffect(() => {
+    // Offset positif (menggeser pusat kamera ke Utara), 
+    // sehingga dot Halte/Bus berada di bagian BAWAH layar.
+    // Ini memberi ruang yang luas di atasnya agar popup tidak terpotong.
+    const LAT_OFFSET = 0.0022;
+
     if (selectedBusId && busState) {
       // Follow the bus
       const halte = HALTE_LIST.find(h => h.id === busState.halte_terakhir);
       if (halte) {
-        map.setView([halte.lat, halte.lng], 16, { animate: true });
+        map.flyTo([halte.lat + LAT_OFFSET, halte.lng], 16, { animate: true, duration: 0.8 });
       }
     } else if (selectedHalteId === 'all') {
-      map.fitBounds(BOUNDS, { padding: [30, 30] });
+      map.flyToBounds(BOUNDS, { padding: [30, 30], animate: true, duration: 0.8 });
     } else {
       const halte = HALTE_LIST.find(h => h.id === selectedHalteId);
       if (halte) {
-        map.setView([halte.lat, halte.lng], 15, { animate: true });
+        map.flyTo([halte.lat + LAT_OFFSET, halte.lng], 16, { animate: true, duration: 0.8 });
       }
     }
   }, [selectedHalteId, selectedBusId, busState?.halte_terakhir, map]);
@@ -56,8 +61,182 @@ function MapController() {
   return null;
 }
 
+// --- Bus Marker Subcomponent ---
+function BusMarker({ bus, state, halte, isSelected, overlappingIndex, totalOverlapping }: any) {
+  const markerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (isSelected && markerRef.current) {
+      markerRef.current.openPopup();
+    }
+  }, [isSelected]);
+
+  const currentHalteIndex = HALTE_LIST.findIndex(h => h.id === state.halte_terakhir);
+  let rotation = 0;
+  if (state.arah === 'to_jatinangor' && currentHalteIndex < HALTE_LIST.length - 1) {
+    const next = HALTE_LIST[currentHalteIndex + 1];
+    rotation = getBearing(halte.lat, halte.lng, next.lat, next.lng);
+  } else if (state.arah === 'to_dipatiukur' && currentHalteIndex > 0) {
+    const next = HALTE_LIST[currentHalteIndex - 1];
+    rotation = getBearing(halte.lat, halte.lng, next.lat, next.lng);
+  }
+
+  const offsetDistance = 0.00015;
+  const offsetAngle = (2 * Math.PI * overlappingIndex) / Math.max(1, totalOverlapping);
+  const lat = totalOverlapping > 1 ? halte.lat + (Math.sin(offsetAngle) * offsetDistance) : halte.lat;
+  const lng = totalOverlapping > 1 ? halte.lng + (Math.cos(offsetAngle) * offsetDistance) : halte.lng;
+
+  const level = getBusDensityLevel(state.penumpang_saat_ini);
+  const colors = getDensityColors(level);
+  const label = getDensityLabel(level);
+
+  const iconHtml = `
+    <div style="
+      width: 14px; 
+      height: 28px; 
+      background-color: ${colors.fill}; 
+      border: 2px solid ${colors.stroke}; 
+      border-radius: 4px;
+      box-shadow: 0 0 10px ${colors.fill};
+      transform: rotate(${rotation}deg);
+      transform-origin: center center;
+      position: relative;
+    ">
+      <div style="
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        right: 2px;
+        height: 4px;
+        background-color: rgba(255,255,255,0.8);
+        border-radius: 2px;
+      "></div>
+    </div>
+  `;
+
+  const customIcon = divIcon({
+    html: iconHtml,
+    className: '',
+    iconSize: [14, 28],
+    iconAnchor: [7, 14],
+    popupAnchor: [0, -14],
+  });
+
+  return (
+    <Marker
+      position={[lat, lng]}
+      icon={customIcon}
+      ref={markerRef}
+      zIndexOffset={isSelected ? 1000 : 0}
+    >
+      <Tooltip direction="right" offset={[10, 0]} className="map-tooltip">
+        {bus.name} ({state.penumpang_saat_ini} pax)
+      </Tooltip>
+      <Popup className="map-popup">
+        <div className="map-popup__content">
+          <h3 className="map-popup__title">{bus.name} <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>({bus.plateNumber})</span></h3>
+          <div className="map-popup__status" style={{ color: colors.fill }}>
+            ● {label} ({state.penumpang_saat_ini} / 40)
+          </div>
+          <div className="map-popup__metrics" style={{ marginTop: '8px' }}>
+            Arah: <strong>{state.arah === 'to_jatinangor' ? 'Jatinangor' : 'Dipatiukur'}</strong>
+          </div>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+// --- Halte Marker Subcomponent ---
+function HalteMarker({ halte, state, prediction, isSelected, setSelectedHalte }: any) {
+  const markerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (isSelected && markerRef.current) {
+      // Tambahkan jeda kecil agar popup terbuka dengan mulus meskipun map sedang animasi (flyTo)
+      setTimeout(() => {
+        if (markerRef.current && markerRef.current.openPopup) {
+          markerRef.current.openPopup();
+        }
+      }, 100);
+    }
+  }, [isSelected]);
+
+  const hasData = !!state?.last_update;
+  const level = hasData ? getDensityLevel(state.total_saat_ini) : 'unknown' as const;
+  const colors = getDensityColors(level);
+  const label = getDensityLabel(level);
+
+  return (
+    <CircleMarker
+      center={[halte.lat, halte.lng]}
+      radius={10}
+      pathOptions={{
+        fillColor: colors.fill,
+        color: colors.stroke,
+        weight: 2,
+        opacity: 0.9,
+        fillOpacity: 0.8,
+      }}
+      eventHandlers={{
+        click: () => setSelectedHalte(halte.id),
+      }}
+      ref={markerRef}
+    >
+      <Tooltip direction="top" offset={[0, -10]} className="map-tooltip">
+        {halte.name}
+      </Tooltip>
+      <Popup className="map-popup" autoPan={false}>
+        <div className="map-popup__content">
+          <h3 className="map-popup__title">{halte.name}</h3>
+          <p className="map-popup__order">Halte #{halte.order}</p>
+
+          <div className="map-popup__section">
+            <div className="map-popup__status" style={{ color: colors.fill }}>
+              ● {label}
+            </div>
+            <div className="map-popup__metrics">
+              <div><strong>{state?.total_saat_ini ?? 0}</strong> saat ini</div>
+              <div><strong>{state?.masuk ?? 0}</strong> masuk</div>
+              <div><strong>{state?.keluar ?? 0}</strong> keluar</div>
+            </div>
+          </div>
+
+          {prediction && (
+            <div className="map-popup__section map-popup__prediction">
+              <div className="prediction-header">
+                <span className="prediction-icon">🔮</span>
+                <span className="prediction-title">Prediksi 1 Jam Kedepan</span>
+              </div>
+              <div className="prediction-metrics">
+                <div className="prediction-main">
+                  <span className="prediction-value">{prediction.predicted_total}</span>
+                  <span className="prediction-label">penumpang</span>
+                </div>
+                <div className="prediction-details">
+                  <span className={`confidence-badge confidence-${prediction.confidence}`}>
+                    {prediction.confidence === 'high' ? 'Tinggi' :
+                      prediction.confidence === 'medium' ? 'Sedang' :
+                        prediction.confidence === 'low' ? 'Rendah' : 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {state?.last_update && (
+            <p className="map-popup__time">
+              Update: {new Date(state.last_update).toLocaleTimeString('id-ID')}
+            </p>
+          )}
+        </div>
+      </Popup>
+    </CircleMarker>
+  );
+}
+
 export default function MapPanel() {
-  const { halteStates, busStates, setSelectedHalte } = useHalteStore();
+  const { halteStates, busStates, selectedBusId, selectedHalteId, setSelectedHalte } = useHalteStore();
   const { getPrediction } = usePrediction();
 
   return (
@@ -84,161 +263,53 @@ export default function MapPanel() {
         />
 
         {/* Halte Markers */}
-        {HALTE_LIST.map(halte => {
-          const state = halteStates[halte.id];
-          const hasData = !!state?.last_update;
-          const level = hasData ? getDensityLevel(state.total_saat_ini) : 'unknown' as const;
-          const colors = getDensityColors(level);
-          const label = getDensityLabel(level);
-          const prediction = getPrediction(halte.id);
-
-          return (
-            <CircleMarker
-              key={`halte-${halte.id}`}
-              center={[halte.lat, halte.lng]}
-              radius={10}
-              pathOptions={{
-                fillColor: colors.fill,
-                color: colors.stroke,
-                weight: 2,
-                opacity: 0.9,
-                fillOpacity: 0.8,
-              }}
-              eventHandlers={{
-                click: () => setSelectedHalte(halte.id),
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -10]} className="map-tooltip">
-                {halte.name}
-              </Tooltip>
-              <Popup className="map-popup">
-                <div className="map-popup__content">
-                  <h3 className="map-popup__title">{halte.name}</h3>
-                  <p className="map-popup__order">Halte #{halte.order}</p>
-
-                  <div className="map-popup__section">
-                    <div className="map-popup__status" style={{ color: colors.fill }}>
-                      ● {label}
-                    </div>
-                    <div className="map-popup__metrics">
-                      <div><strong>{state?.total_saat_ini ?? 0}</strong> saat ini</div>
-                      <div><strong>{state?.masuk ?? 0}</strong> masuk</div>
-                      <div><strong>{state?.keluar ?? 0}</strong> keluar</div>
-                    </div>
-                  </div>
-
-                  {prediction && (
-                    <div className="map-popup__section map-popup__prediction">
-                      <div className="prediction-header">
-                        <span className="prediction-icon">🔮</span>
-                        <span className="prediction-title">Prediksi 1 Jam Kedepan</span>
-                      </div>
-                      <div className="prediction-metrics">
-                        <div className="prediction-main">
-                          <span className="prediction-value">{prediction.predicted_total}</span>
-                          <span className="prediction-label">penumpang</span>
-                        </div>
-                        <div className="prediction-details">
-                          <span className={`confidence-badge confidence-${prediction.confidence}`}>
-                            {prediction.confidence === 'high' ? 'Tinggi' :
-                              prediction.confidence === 'medium' ? 'Sedang' :
-                                prediction.confidence === 'low' ? 'Rendah' : 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {state?.last_update && (
-                    <p className="map-popup__time">
-                      Update: {new Date(state.last_update).toLocaleTimeString('id-ID')}
-                    </p>
-                  )}
-                </div>
-              </Popup>
-            </CircleMarker>
-          );
-        })}
+        {HALTE_LIST.map(halte => (
+          <HalteMarker
+            key={`halte-${halte.id}`}
+            halte={halte}
+            state={halteStates[halte.id]}
+            prediction={getPrediction(halte.id)}
+            isSelected={selectedHalteId === halte.id}
+            setSelectedHalte={setSelectedHalte}
+          />
+        ))}
 
         {/* Bus Markers */}
-        {BUS_LIST.map(bus => {
-          const state = busStates[bus.id];
-          if (!state) return null;
+        {(() => {
+          const busPositions = BUS_LIST.map(bus => {
+            const state = busStates[bus.id];
+            return { bus, state, halteId: state?.halte_terakhir };
+          }).filter((x: any) => x.state && x.halteId);
 
-          const currentHalteIndex = HALTE_LIST.findIndex(h => h.id === state.halte_terakhir);
-          if (currentHalteIndex === -1) return null;
-
-          const halte = HALTE_LIST[currentHalteIndex];
-
-          // Hitung rotasi bus (orientasi arah)
-          let rotation = 0;
-          if (state.arah === 'to_jatinangor' && currentHalteIndex < HALTE_LIST.length - 1) {
-            const next = HALTE_LIST[currentHalteIndex + 1];
-            rotation = getBearing(halte.lat, halte.lng, next.lat, next.lng);
-          } else if (state.arah === 'to_dipatiukur' && currentHalteIndex > 0) {
-            const next = HALTE_LIST[currentHalteIndex - 1];
-            rotation = getBearing(halte.lat, halte.lng, next.lat, next.lng);
+          const groups: Record<string, typeof busPositions> = {};
+          for (const item of busPositions) {
+            const hId = item.halteId as string;
+            if (!groups[hId]) groups[hId] = [];
+            groups[hId].push(item);
           }
 
-          const level = getBusDensityLevel(state.penumpang_saat_ini);
-          const colors = getDensityColors(level);
-          const label = getDensityLabel(level);
+          return busPositions.map((item: any) => {
+            const hId = item.halteId as string;
+            const group = groups[hId];
+            const overlappingIndex = group.indexOf(item);
+            const totalOverlapping = group.length;
+            const halte = HALTE_LIST.find(h => h.id === hId);
 
-          const iconHtml = `
-            <div style="
-              width: 14px; 
-              height: 28px; 
-              background-color: ${colors.fill}; 
-              border: 2px solid ${colors.stroke}; 
-              border-radius: 4px;
-              box-shadow: 0 0 10px ${colors.fill};
-              transform: rotate(${rotation}deg);
-              transform-origin: center center;
-              position: relative;
-            ">
-              <div style="
-                position: absolute;
-                top: 2px;
-                left: 2px;
-                right: 2px;
-                height: 4px;
-                background-color: rgba(255,255,255,0.8);
-                border-radius: 2px;
-              "></div>
-            </div>
-          `;
+            if (!halte) return null;
 
-          const customIcon = divIcon({
-            html: iconHtml,
-            className: '',
-            iconSize: [14, 28],
-            iconAnchor: [7, 14],
-            popupAnchor: [0, -14],
+            return (
+              <BusMarker
+                key={`bus-${item.bus.id}`}
+                bus={item.bus}
+                state={item.state}
+                halte={halte}
+                isSelected={selectedBusId === item.bus.id}
+                overlappingIndex={overlappingIndex}
+                totalOverlapping={totalOverlapping}
+              />
+            );
           });
-
-          return (
-            <Marker
-              key={`bus-${bus.id}`}
-              position={[halte.lat, halte.lng]}
-              icon={customIcon}
-            >
-              <Tooltip direction="right" offset={[10, 0]} className="map-tooltip">
-                {bus.name} ({state.penumpang_saat_ini} pax)
-              </Tooltip>
-              <Popup className="map-popup">
-                <div className="map-popup__content">
-                  <h3 className="map-popup__title">{bus.name} <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>({bus.plateNumber})</span></h3>
-                  <div className="map-popup__status" style={{ color: colors.fill }}>
-                    ● {label} ({state.penumpang_saat_ini} / 40)
-                  </div>
-                  <div className="map-popup__metrics" style={{ marginTop: '8px' }}>
-                    Arah: <strong>{state.arah === 'to_jatinangor' ? 'Jatinangor' : 'Dipatiukur'}</strong>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+        })()}
 
         <MapController />
       </MapContainer>

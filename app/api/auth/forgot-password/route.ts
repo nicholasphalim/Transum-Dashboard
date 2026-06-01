@@ -11,7 +11,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user) {
       // Return success even if not found to prevent email enumeration
       return NextResponse.json({ ok: true });
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const token = crypto.randomBytes(32).toString('hex');
     const expiry = Date.now() + 3600000; // 1 hour
 
-    updateUserResetToken(user.id, token, expiry);
+    await updateUserResetToken(user.id, token, expiry);
 
     // Send the actual email
     try {

@@ -1,76 +1,18 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
-// ── Database path ──
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DATA_DIR, 'transum.db');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.warn('⚠️ SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY belum diset di .env.local');
 }
 
-// ── Singleton connection ──
-let _db: Database.Database | null = null;
-
-function getDb(): Database.Database {
-  if (_db) return _db;
-
-  _db = new Database(DB_PATH);
-
-  // Performance pragmas
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('synchronous = NORMAL');
-  _db.pragma('cache_size = -64000'); // 64MB cache
-  _db.pragma('foreign_keys = ON');
-
-  // ── Create tables ──
-  _db.exec(`
-    CREATE TABLE IF NOT EXISTS passenger_records (
-      id              INTEGER PRIMARY KEY AUTOINCREMENT,
-      halte_id        TEXT    NOT NULL,
-      timestamp       TEXT    NOT NULL,
-      masuk           INTEGER NOT NULL,
-      keluar          INTEGER NOT NULL,
-      total_saat_ini  INTEGER NOT NULL,
-      hour            INTEGER NOT NULL,
-      day_of_week     INTEGER NOT NULL,
-      source          TEXT    NOT NULL DEFAULT 'mqtt',
-      created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-
-  _db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-      username           TEXT    NOT NULL UNIQUE,
-      email              TEXT    NOT NULL UNIQUE,
-      password_hash      TEXT    NOT NULL,
-      reset_token        TEXT,
-      reset_token_expiry INTEGER,
-      created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-
-  // ── Indexes for fast queries ──
-  _db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_records_halte_time
-      ON passenger_records (halte_id, timestamp);
-  `);
-  _db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_records_halte_hour_dow
-      ON passenger_records (halte_id, hour, day_of_week);
-  `);
-
-  // ── Auto-cleanup: remove records older than 30 days ──
-  _db.exec(`
-    DELETE FROM passenger_records
-    WHERE timestamp < datetime('now', '-30 days');
-  `);
-
-  return _db;
-}
+// ── Supabase Client (Service Role for backend use) ──
+export const supabase = createClient(supabaseUrl || '', supabaseServiceKey || '', {
+  auth: {
+    persistSession: false,
+  }
+});
 
 // ── Types ──
 export interface RecordInsert {
@@ -82,123 +24,6 @@ export interface RecordInsert {
   source?: string;
 }
 
-// ── Prepared Statements (lazy-initialized) ──
-
-let _insertStmt: Database.Statement | null = null;
-
-function getInsertStmt() {
-  if (!_insertStmt) {
-    _insertStmt = getDb().prepare(`
-      INSERT INTO passenger_records (halte_id, timestamp, masuk, keluar, total_saat_ini, hour, day_of_week, source)
-      VALUES (@halte_id, @timestamp, @masuk, @keluar, @total_saat_ini, @hour, @day_of_week, @source)
-    `);
-  }
-  return _insertStmt;
-}
-
-// ── Public API ──
-
-/**
- * Batch-insert passenger records in a single transaction.
- */
-export function insertRecords(records: RecordInsert[]): number {
-  const db = getDb();
-  const stmt = getInsertStmt();
-
-  const insertMany = db.transaction((items: RecordInsert[]) => {
-    let count = 0;
-    for (const record of items) {
-      const dt = new Date(record.timestamp);
-      stmt.run({
-        halte_id: record.halte_id,
-        timestamp: record.timestamp,
-        masuk: record.masuk,
-        keluar: record.keluar,
-        total_saat_ini: record.total_saat_ini,
-        hour: dt.getHours(),
-        day_of_week: dt.getDay(),
-        source: record.source ?? 'mqtt',
-      });
-      count++;
-    }
-    return count;
-  });
-
-  return insertMany(records);
-}
-
-/**
- * Query historical records for a halte within a lookback window.
- */
-export function getHistory(halteId: string | null, hours: number = 24) {
-  const db = getDb();
-
-  if (halteId && halteId !== 'all') {
-    return db.prepare(`
-      SELECT halte_id, timestamp, masuk, keluar, total_saat_ini, hour, day_of_week, source
-      FROM passenger_records
-      WHERE halte_id = ? AND timestamp >= datetime('now', '-' || ? || ' hours')
-      ORDER BY timestamp ASC
-    `).all(halteId, hours);
-  }
-
-  return db.prepare(`
-    SELECT halte_id, timestamp, masuk, keluar, total_saat_ini, hour, day_of_week, source
-    FROM passenger_records
-    WHERE timestamp >= datetime('now', '-' || ? || ' hours')
-    ORDER BY timestamp ASC
-  `).all(hours);
-}
-
-/**
- * Get hourly averages grouped by hour and day_of_week for prediction.
- */
-export function getHourlyStats(halteId: string | null) {
-  const db = getDb();
-
-  if (halteId && halteId !== 'all') {
-    return db.prepare(`
-      SELECT
-        halte_id,
-        hour,
-        day_of_week,
-        ROUND(AVG(total_saat_ini), 2) AS avg_total,
-        ROUND(AVG(masuk), 2)          AS avg_masuk,
-        ROUND(AVG(keluar), 2)         AS avg_keluar,
-        COUNT(*)                      AS sample_count
-      FROM passenger_records
-      WHERE halte_id = ?
-      GROUP BY halte_id, hour, day_of_week
-      ORDER BY day_of_week, hour
-    `).all(halteId);
-  }
-
-  return db.prepare(`
-    SELECT
-      halte_id,
-      hour,
-      day_of_week,
-      ROUND(AVG(total_saat_ini), 2) AS avg_total,
-      ROUND(AVG(masuk), 2)          AS avg_masuk,
-      ROUND(AVG(keluar), 2)         AS avg_keluar,
-      COUNT(*)                      AS sample_count
-    FROM passenger_records
-    GROUP BY halte_id, hour, day_of_week
-    ORDER BY halte_id, day_of_week, hour
-  `).all();
-}
-
-/**
- * Get total record count (for monitoring).
- */
-export function getRecordCount(): number {
-  const db = getDb();
-  const row = db.prepare('SELECT COUNT(*) AS count FROM passenger_records').get() as { count: number };
-  return row.count;
-}
-
-// ── User Management API ──
-
 export interface User {
   id: number;
   username: string;
@@ -209,40 +34,192 @@ export interface User {
   created_at: string;
 }
 
-export function createUser(username: string, email: string, password_hash: string): number {
-  const db = getDb();
-  const info = db.prepare(`
-    INSERT INTO users (username, email, password_hash)
-    VALUES (?, ?, ?)
-  `).run(username, email, password_hash);
-  return info.lastInsertRowid as number;
+// ── Public API ──
+
+/**
+ * Batch-insert passenger records
+ */
+export async function insertRecords(records: RecordInsert[]): Promise<number> {
+  const rows = records.map(record => {
+    const dt = new Date(record.timestamp);
+    return {
+      halte_id: record.halte_id,
+      timestamp: record.timestamp,
+      masuk: record.masuk,
+      keluar: record.keluar,
+      total_saat_ini: record.total_saat_ini,
+      hour: dt.getHours(),
+      day_of_week: dt.getDay(),
+      source: record.source ?? 'mqtt',
+    };
+  });
+
+  const { error } = await supabase.from('passenger_records').insert(rows);
+  if (error) {
+    console.error('Error inserting records:', error);
+    return 0;
+  }
+  return rows.length;
 }
 
-export function getUserByUsername(username: string): User | undefined {
-  const db = getDb();
-  return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
+/**
+ * Query historical records for a halte within a lookback window.
+ */
+export async function getHistory(halteId: string | null, hours: number = 24) {
+  const lookbackDate = new Date();
+  lookbackDate.setHours(lookbackDate.getHours() - hours);
+  const lookbackISO = lookbackDate.toISOString();
+
+  let query = supabase
+    .from('passenger_records')
+    .select('halte_id, timestamp, masuk, keluar, total_saat_ini, hour, day_of_week, source')
+    .gte('timestamp', lookbackISO)
+    .order('timestamp', { ascending: true });
+
+  if (halteId && halteId !== 'all') {
+    query = query.eq('halte_id', halteId);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error getting history:', error);
+    return [];
+  }
+  return data || [];
 }
 
-export function getUserByEmail(email: string): User | undefined {
-  const db = getDb();
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as User | undefined;
+/**
+ * Get hourly averages grouped by hour and day_of_week for prediction.
+ */
+export async function getHourlyStats(halteId: string | null) {
+  // Supabase postgREST doesn't natively support GROUP BY without creating a View or RPC function.
+  // We can fetch the raw data and aggregate in JS for now, or create an RPC later.
+  // Since this is for a prototype/dashboard, let's just query the data and aggregate it in memory.
+  
+  let query = supabase.from('passenger_records').select('halte_id, hour, day_of_week, total_saat_ini, masuk, keluar');
+  if (halteId && halteId !== 'all') {
+    query = query.eq('halte_id', halteId);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) {
+    console.error('Error getting stats:', error);
+    return [];
+  }
+
+  // Aggregate in JS
+  type AggState = {
+    total_saat_ini_sum: number;
+    masuk_sum: number;
+    keluar_sum: number;
+    count: number;
+  };
+  const grouped: Record<string, AggState> = {};
+
+  for (const row of data) {
+    const key = `${row.halte_id}_${row.day_of_week}_${row.hour}`;
+    if (!grouped[key]) {
+      grouped[key] = { total_saat_ini_sum: 0, masuk_sum: 0, keluar_sum: 0, count: 0 };
+    }
+    grouped[key].total_saat_ini_sum += row.total_saat_ini;
+    grouped[key].masuk_sum += row.masuk;
+    grouped[key].keluar_sum += row.keluar;
+    grouped[key].count++;
+  }
+
+  const result = Object.entries(grouped).map(([key, state]) => {
+    const [h_id, d_str, hr_str] = key.split('_');
+    return {
+      halte_id: h_id,
+      day_of_week: parseInt(d_str),
+      hour: parseInt(hr_str),
+      avg_total: parseFloat((state.total_saat_ini_sum / state.count).toFixed(2)),
+      avg_masuk: parseFloat((state.masuk_sum / state.count).toFixed(2)),
+      avg_keluar: parseFloat((state.keluar_sum / state.count).toFixed(2)),
+      sample_count: state.count,
+    };
+  });
+
+  result.sort((a, b) => {
+    if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+    return a.hour - b.hour;
+  });
+
+  return result;
 }
 
-export function updateUserResetToken(userId: number, token: string | null, expiry: number | null) {
-  const db = getDb();
-  db.prepare(`
-    UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?
-  `).run(token, expiry, userId);
+/**
+ * Get total record count (for monitoring).
+ */
+export async function getRecordCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('passenger_records')
+    .select('*', { count: 'exact', head: true });
+    
+  if (error) {
+    console.error('Error getting record count:', error);
+    return 0;
+  }
+  return count || 0;
 }
 
-export function getUserByResetToken(token: string): User | undefined {
-  const db = getDb();
-  return db.prepare('SELECT * FROM users WHERE reset_token = ?').get(token) as User | undefined;
+// ── User Management API ──
+
+export async function createUser(username: string, email: string, password_hash: string): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .insert([{ username, email, password_hash }])
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Error creating user:', error);
+    return null;
+  }
+  return data.id;
 }
 
-export function updateUserPassword(userId: number, password_hash: string) {
-  const db = getDb();
-  db.prepare(`
-    UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?
-  `).run(password_hash, userId);
+export async function getUserByUsername(username: string): Promise<User | undefined> {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .single();
+  return data || undefined;
+}
+
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single();
+  return data || undefined;
+}
+
+export async function updateUserResetToken(userId: number, token: string | null, expiry: number | null) {
+  const { error } = await supabase
+    .from('users')
+    .update({ reset_token: token, reset_token_expiry: expiry })
+    .eq('id', userId);
+    
+  if (error) console.error('Error updating reset token:', error);
+}
+
+export async function getUserByResetToken(token: string): Promise<User | undefined> {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('reset_token', token)
+    .single();
+  return data || undefined;
+}
+
+export async function updateUserPassword(userId: number, password_hash: string) {
+  const { error } = await supabase
+    .from('users')
+    .update({ password_hash, reset_token: null, reset_token_expiry: null })
+    .eq('id', userId);
+    
+  if (error) console.error('Error updating password:', error);
 }
