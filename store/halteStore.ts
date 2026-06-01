@@ -9,6 +9,7 @@ interface HalteStore {
   connectionStatus: ConnectionStatus;
   isSimulatorActive: boolean;
   chartHistory: ChartDataPoint[];
+  pendingRecords: MqttPayload[]; // buffer for SQLite persistence
 
   // Actions
   initStates: () => void;
@@ -17,6 +18,7 @@ interface HalteStore {
   setConnectionStatus: (status: ConnectionStatus) => void;
   setSimulatorActive: (active: boolean) => void;
   addChartPoint: (point: ChartDataPoint) => void;
+  flushRecords: () => Promise<void>;
   resetAll: () => void;
 }
 
@@ -34,6 +36,7 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
   connectionStatus: 'connecting',
   isSimulatorActive: false,
   chartHistory: [],
+  pendingRecords: [],
 
   initStates: () => {
     const initial: Record<string, HalteState> = {};
@@ -67,6 +70,8 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
             history: newHistory,
           },
         },
+        // Also buffer the payload for SQLite persistence
+        pendingRecords: [...state.pendingRecords, payload],
       };
     });
   },
@@ -81,6 +86,38 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
     }));
   },
 
+  flushRecords: async () => {
+    const records = get().pendingRecords;
+    if (records.length === 0) return;
+
+    // Clear the buffer immediately to avoid duplicate sends
+    set({ pendingRecords: [] });
+
+    const source = get().isSimulatorActive ? 'simulator' : 'mqtt';
+
+    try {
+      const res = await fetch('/api/data/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records, source }),
+      });
+
+      if (!res.ok) {
+        console.warn('[Store] Failed to flush records:', res.status);
+        // Put records back on failure so we don't lose data
+        set(state => ({
+          pendingRecords: [...records, ...state.pendingRecords],
+        }));
+      }
+    } catch (err) {
+      console.warn('[Store] Network error flushing records:', err);
+      // Put records back on network failure
+      set(state => ({
+        pendingRecords: [...records, ...state.pendingRecords],
+      }));
+    }
+  },
+
   resetAll: () => {
     const initial: Record<string, HalteState> = {};
     HALTE_LIST.forEach(h => {
@@ -91,6 +128,7 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
       connectionStatus: 'connecting',
       isSimulatorActive: false,
       chartHistory: [],
+      pendingRecords: [],
     });
   },
 }));

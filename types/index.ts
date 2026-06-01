@@ -78,3 +78,28 @@ export interface MqttConfig {
   reconnectPeriod: number;
   connectTimeout: number;
 }
+
+// Database: passenger record row
+export interface PassengerRecord {
+  id: number;
+  halte_id: string;
+  timestamp: string;
+  masuk: number;
+  keluar: number;
+  total_saat_ini: number;
+  hour: number;
+  day_of_week: number;
+  source: string;
+  created_at: string;
+}
+
+// Database: hourly average for prediction
+export interface HourlyAverage {
+  halte_id: string;
+  hour: number;
+  day_of_week: number;
+  avg_total: number;
+  avg_masuk: number;
+  avg_keluar: number;
+  sample_count: number;
+}

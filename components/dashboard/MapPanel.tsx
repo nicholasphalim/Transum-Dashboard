@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, Tooltip, useMap
 import { useHalteStore } from '@/store/halteStore';
 import { HALTE_LIST } from '@/lib/halte-data';
 import { getDensityLevel, getDensityColors, getDensityLabel } from '@/lib/density';
+import { usePrediction } from '@/hooks/usePrediction';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -35,6 +36,7 @@ function MapController() {
 
 export default function MapPanel() {
   const { halteStates, setSelectedHalte } = useHalteStore();
+  const { getPrediction } = usePrediction();
 
   return (
     <div className="map-panel">
@@ -64,6 +66,7 @@ export default function MapPanel() {
           const level = getDensityLevel(state?.total_saat_ini ?? 0);
           const colors = getDensityColors(level);
           const label = getDensityLabel(level);
+          const prediction = getPrediction(halte.id);
 
           return (
             <CircleMarker
@@ -88,17 +91,43 @@ export default function MapPanel() {
                 <div className="map-popup__content">
                   <h3 className="map-popup__title">{halte.name}</h3>
                   <p className="map-popup__order">Halte #{halte.order}</p>
-                  <div className="map-popup__status" style={{ color: colors.fill }}>
-                    ● {label}
+                  
+                  <div className="map-popup__section">
+                    <div className="map-popup__status" style={{ color: colors.fill }}>
+                      ● {label}
+                    </div>
+                    <div className="map-popup__metrics">
+                      <div><strong>{state?.total_saat_ini ?? 0}</strong> saat ini</div>
+                      <div><strong>{state?.masuk ?? 0}</strong> masuk</div>
+                      <div><strong>{state?.keluar ?? 0}</strong> keluar</div>
+                    </div>
                   </div>
-                  <div className="map-popup__metrics">
-                    <div><strong>{state?.total_saat_ini ?? 0}</strong> menunggu</div>
-                    <div><strong>{state?.masuk ?? 0}</strong> masuk</div>
-                    <div><strong>{state?.keluar ?? 0}</strong> keluar</div>
-                  </div>
+
+                  {prediction && (
+                    <div className="map-popup__section map-popup__prediction">
+                      <div className="prediction-header">
+                        <span className="prediction-icon">🔮</span>
+                        <span className="prediction-title">Prediksi 1 Jam Kedepan</span>
+                      </div>
+                      <div className="prediction-metrics">
+                        <div className="prediction-main">
+                          <span className="prediction-value">{prediction.predicted_total}</span>
+                          <span className="prediction-label">penumpang</span>
+                        </div>
+                        <div className="prediction-details">
+                          <span className={`confidence-badge confidence-${prediction.confidence}`}>
+                            {prediction.confidence === 'high' ? 'Tinggi' : 
+                             prediction.confidence === 'medium' ? 'Sedang' : 
+                             prediction.confidence === 'low' ? 'Rendah' : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {state?.last_update && (
                     <p className="map-popup__time">
-                      {new Date(state.last_update).toLocaleTimeString('id-ID')}
+                      Update: {new Date(state.last_update).toLocaleTimeString('id-ID')}
                     </p>
                   )}
                 </div>
