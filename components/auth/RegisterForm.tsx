@@ -3,10 +3,12 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function LoginForm() {
+export default function RegisterForm() {
   const router = useRouter();
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
@@ -14,23 +16,31 @@ export default function LoginForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (password !== confirmPassword) {
+      setError('Password tidak cocok');
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, email, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || 'Login gagal');
+        setError(data.error || 'Gagal mendaftar');
         setShake(true);
         setTimeout(() => setShake(false), 500);
       } else {
-        router.push('/dashboard');
+        router.push('/login?registered=true');
       }
     } catch {
       setError('Terjadi kesalahan jaringan');
@@ -48,9 +58,8 @@ export default function LoginForm() {
     >
       <div className="login-form__header">
         <span className="login-form__icon">🚍</span>
-        <h1 className="login-form__title">TransUm Bandung</h1>
-        <p className="login-form__subtitle">Dashboard Penghitung Penumpang</p>
-        <p className="login-form__corridor">Koridor 5 — UNPAD Dipatiukur ↔ UNPAD Jatinangor</p>
+        <h1 className="login-form__title">Daftar Akun Baru</h1>
+        <p className="login-form__subtitle">Dashboard TransUm Bandung</p>
       </div>
 
       {error && (
@@ -64,15 +73,29 @@ export default function LoginForm() {
       )}
 
       <div className="login-form__field">
-        <label htmlFor="username">Username atau Email</label>
+        <label htmlFor="username">Username</label>
         <input
           id="username"
           type="text"
           value={username}
           onChange={e => setUsername(e.target.value)}
-          placeholder="Masukkan username atau email"
+          placeholder="Pilih username"
           required
           autoComplete="username"
+          disabled={loading}
+        />
+      </div>
+
+      <div className="login-form__field">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          placeholder="Masukkan email"
+          required
+          autoComplete="email"
           disabled={loading}
         />
       </div>
@@ -84,10 +107,26 @@ export default function LoginForm() {
           type="password"
           value={password}
           onChange={e => setPassword(e.target.value)}
-          placeholder="Masukkan password"
+          placeholder="Minimal 8 karakter"
           required
-          autoComplete="current-password"
+          autoComplete="new-password"
           disabled={loading}
+          minLength={8}
+        />
+      </div>
+
+      <div className="login-form__field">
+        <label htmlFor="confirmPassword">Konfirmasi Password</label>
+        <input
+          id="confirmPassword"
+          type="password"
+          value={confirmPassword}
+          onChange={e => setConfirmPassword(e.target.value)}
+          placeholder="Ketik ulang password"
+          required
+          autoComplete="new-password"
+          disabled={loading}
+          minLength={8}
         />
       </div>
 
@@ -99,18 +138,15 @@ export default function LoginForm() {
         {loading ? (
           <span className="login-form__spinner" />
         ) : (
-          'Masuk ke Dashboard'
+          'Daftar Akun'
         )}
       </button>
 
-      <div className="login-form__links" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', fontSize: '13px' }}>
-        <a href="/forgot-password" style={{ color: 'var(--accent-green)', textDecoration: 'none' }}>Lupa password?</a>
-        <a href="/register" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Belum punya akun? <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Daftar</span></a>
+      <div className="login-form__links" style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px' }}>
+        <a href="/login" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>
+          Sudah punya akun? <span style={{ color: 'var(--accent-green)', fontWeight: '600' }}>Masuk di sini</span>
+        </a>
       </div>
-
-      <p className="login-form__footer" style={{ marginTop: '24px' }}>
-        Metro Jabar Trans — Sistem Monitoring IoT
-      </p>
     </form>
   );
 }

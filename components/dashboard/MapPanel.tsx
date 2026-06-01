@@ -115,7 +115,7 @@ export default function MapPanel() {
                 <div className="map-popup__content">
                   <h3 className="map-popup__title">{halte.name}</h3>
                   <p className="map-popup__order">Halte #{halte.order}</p>
-                  
+
                   <div className="map-popup__section">
                     <div className="map-popup__status" style={{ color: colors.fill }}>
                       ● {label}
@@ -140,9 +140,9 @@ export default function MapPanel() {
                         </div>
                         <div className="prediction-details">
                           <span className={`confidence-badge confidence-${prediction.confidence}`}>
-                            {prediction.confidence === 'high' ? 'Tinggi' : 
-                             prediction.confidence === 'medium' ? 'Sedang' : 
-                             prediction.confidence === 'low' ? 'Rendah' : 'N/A'}
+                            {prediction.confidence === 'high' ? 'Tinggi' :
+                              prediction.confidence === 'medium' ? 'Sedang' :
+                                prediction.confidence === 'low' ? 'Rendah' : 'N/A'}
                           </span>
                         </div>
                       </div>
@@ -169,7 +169,7 @@ export default function MapPanel() {
           if (currentHalteIndex === -1) return null;
 
           const halte = HALTE_LIST[currentHalteIndex];
-          
+
           // Hitung rotasi bus (orientasi arah)
           let rotation = 0;
           if (state.arah === 'to_jatinangor' && currentHalteIndex < HALTE_LIST.length - 1) {
@@ -227,7 +227,7 @@ export default function MapPanel() {
               </Tooltip>
               <Popup className="map-popup">
                 <div className="map-popup__content">
-                  <h3 className="map-popup__title">{bus.name} <span style={{fontSize: '11px', color: 'var(--text-dim)'}}>({bus.plateNumber})</span></h3>
+                  <h3 className="map-popup__title">{bus.name} <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>({bus.plateNumber})</span></h3>
                   <div className="map-popup__status" style={{ color: colors.fill }}>
                     ● {label} ({state.penumpang_saat_ini} / 40)
                   </div>

@@ -1,50 +1,54 @@
 import { NextResponse } from 'next/server';
 import { signSession } from '@/lib/auth';
-
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 5 * 60 * 1000; // 5 menit
-
-// In-memory rate limiter (untuk produksi gunakan Redis/KV)
-const loginAttempts: Record<string, { count: number; lockedUntil: number }> = {};
+import bcrypt from 'bcryptjs';
+import { getUserByUsername, getUserByEmail } from '@/lib/db';
 
 export async function POST(request: Request) {
   const { username, password } = await request.json();
 
-  const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
-  const now = Date.now();
+  // Allow admin fallback for safety or dev
+  const validAdminUser = process.env.AUTH_USERNAME ?? 'admin';
+  const validAdminPass = process.env.AUTH_PASSWORD ?? 'transumbandung2026';
 
-  // Rate limiting
-  if (!loginAttempts[ip]) loginAttempts[ip] = { count: 0, lockedUntil: 0 };
-  const attempt = loginAttempts[ip];
+  let isValid = false;
+  let loggedInUser = null;
 
-  if (attempt.lockedUntil > now) {
-    const remaining = Math.ceil((attempt.lockedUntil - now) / 1000);
-    return NextResponse.json(
-      { error: `Terlalu banyak percobaan. Coba lagi dalam ${remaining} detik.` },
-      { status: 429 }
-    );
-  }
-
-  const validUser = process.env.AUTH_USERNAME ?? 'admin';
-  const validPass = process.env.AUTH_PASSWORD ?? 'transumbandung2026';
-
-  if (username !== validUser || password !== validPass) {
-    attempt.count++;
-    if (attempt.count >= MAX_ATTEMPTS) {
-      attempt.lockedUntil = now + LOCKOUT_DURATION;
+  if (username === validAdminUser) {
+    if (password === validAdminPass) {
+      isValid = true;
+    } else {
+      return NextResponse.json(
+        { error: 'Password salah' },
+        { status: 401 }
+      );
     }
-    const remaining = MAX_ATTEMPTS - attempt.count;
-    return NextResponse.json(
-      { error: `Username atau password salah. Sisa percobaan: ${Math.max(0, remaining)}` },
-      { status: 401 }
-    );
+  } else {
+    // Cari berdasarkan username, jika tidak ketemu cari berdasarkan email
+    let user = getUserByUsername(username);
+    if (!user && username.includes('@')) {
+      user = getUserByEmail(username);
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Username atau Email belum terdaftar' },
+        { status: 401 }
+      );
+    }
+    
+    isValid = await bcrypt.compare(password, user.password_hash);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Password salah' },
+        { status: 401 }
+      );
+    }
+    loggedInUser = user;
   }
 
   // Login sukses — buat JWT
-  attempt.count = 0;
-  attempt.lockedUntil = 0;
-
-  const token = await signSession(username);
+  const sessionUsername = loggedInUser ? loggedInUser.username : username;
+  const token = await signSession(sessionUsername);
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set('transum_session', token, {

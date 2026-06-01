@@ -25,7 +25,7 @@ function getDb(): Database.Database {
   _db.pragma('cache_size = -64000'); // 64MB cache
   _db.pragma('foreign_keys = ON');
 
-  // ── Create table ──
+  // ── Create tables ──
   _db.exec(`
     CREATE TABLE IF NOT EXISTS passenger_records (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +38,18 @@ function getDb(): Database.Database {
       day_of_week     INTEGER NOT NULL,
       source          TEXT    NOT NULL DEFAULT 'mqtt',
       created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  _db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      username           TEXT    NOT NULL UNIQUE,
+      email              TEXT    NOT NULL UNIQUE,
+      password_hash      TEXT    NOT NULL,
+      reset_token        TEXT,
+      reset_token_expiry INTEGER,
+      created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
     );
   `);
 
@@ -183,4 +195,54 @@ export function getRecordCount(): number {
   const db = getDb();
   const row = db.prepare('SELECT COUNT(*) AS count FROM passenger_records').get() as { count: number };
   return row.count;
+}
+
+// ── User Management API ──
+
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  password_hash: string;
+  reset_token: string | null;
+  reset_token_expiry: number | null;
+  created_at: string;
+}
+
+export function createUser(username: string, email: string, password_hash: string): number {
+  const db = getDb();
+  const info = db.prepare(`
+    INSERT INTO users (username, email, password_hash)
+    VALUES (?, ?, ?)
+  `).run(username, email, password_hash);
+  return info.lastInsertRowid as number;
+}
+
+export function getUserByUsername(username: string): User | undefined {
+  const db = getDb();
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username) as User | undefined;
+}
+
+export function getUserByEmail(email: string): User | undefined {
+  const db = getDb();
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(email) as User | undefined;
+}
+
+export function updateUserResetToken(userId: number, token: string | null, expiry: number | null) {
+  const db = getDb();
+  db.prepare(`
+    UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?
+  `).run(token, expiry, userId);
+}
+
+export function getUserByResetToken(token: string): User | undefined {
+  const db = getDb();
+  return db.prepare('SELECT * FROM users WHERE reset_token = ?').get(token) as User | undefined;
+}
+
+export function updateUserPassword(userId: number, password_hash: string) {
+  const db = getDb();
+  db.prepare(`
+    UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?
+  `).run(password_hash, userId);
 }
