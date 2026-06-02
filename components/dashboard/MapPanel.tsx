@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
-import { divIcon } from 'leaflet';
+import { divIcon, Map as LeafletMap } from 'leaflet';
 import { useTheme } from 'next-themes';
 import { useHalteStore } from '@/store/halteStore';
 import { HALTE_LIST } from '@/lib/halte-data';
@@ -24,11 +24,19 @@ function getBearing(lat1: number, lng1: number, lat2: number, lng2: number) {
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const lat1Rad = lat1 * Math.PI / 180;
   const lat2Rad = lat2 * Math.PI / 180;
-
   const y = Math.sin(dLng) * Math.cos(lat2Rad);
   const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
   const brng = Math.atan2(y, x);
   return (brng * 180 / Math.PI + 360) % 360;
+}
+
+// Sub-component to expose the Leaflet map instance via ref (must be inside MapContainer)
+function MapRefCapture({ mapRef }: { mapRef: React.MutableRefObject<LeafletMap | null> }) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map;
+  }, [map, mapRef]);
+  return null;
 }
 
 function MapController() {
@@ -38,13 +46,8 @@ function MapController() {
   const busState = useHalteStore(state => selectedBusId ? state.busStates[selectedBusId] : null);
 
   useEffect(() => {
-    // Offset positif (menggeser pusat kamera ke Utara), 
-    // sehingga dot Halte/Bus berada di bagian BAWAH layar.
-    // Ini memberi ruang yang luas di atasnya agar popup tidak terpotong.
     const LAT_OFFSET = 0.0022;
-
     if (selectedBusId && busState) {
-      // Follow the bus
       const halte = HALTE_LIST.find(h => h.id === busState.halte_terakhir);
       if (halte) {
         map.flyTo([halte.lat + LAT_OFFSET, halte.lng], 16, { animate: true, duration: 0.8 });
@@ -93,10 +96,10 @@ function BusMarker({ bus, state, halte, isSelected, overlappingIndex, totalOverl
 
   const iconHtml = `
     <div style="
-      width: 14px; 
-      height: 28px; 
-      background-color: ${colors.fill}; 
-      border: 2px solid ${colors.stroke}; 
+      width: 14px;
+      height: 28px;
+      background-color: ${colors.fill};
+      border: 2px solid ${colors.stroke};
       border-radius: 4px;
       box-shadow: 0 0 10px ${colors.fill};
       transform: rotate(${rotation}deg);
@@ -154,7 +157,6 @@ function HalteMarker({ halte, state, prediction, isSelected, setSelectedHalte }:
 
   useEffect(() => {
     if (isSelected && markerRef.current) {
-      // Tambahkan jeda kecil agar popup terbuka dengan mulus meskipun map sedang animasi (flyTo)
       setTimeout(() => {
         if (markerRef.current && markerRef.current.openPopup) {
           markerRef.current.openPopup();
@@ -241,6 +243,7 @@ export default function MapPanel() {
   const { getPrediction } = usePrediction();
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const mapRef = useRef<LeafletMap | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -252,8 +255,41 @@ export default function MapPanel() {
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
+  const handleCenterFleet = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const LAT_OFFSET = 0.0022;
+
+    if (selectedBusId && busStates[selectedBusId]) {
+      const busState = busStates[selectedBusId];
+      const halte = HALTE_LIST.find(h => h.id === busState.halte_terakhir);
+      if (halte) {
+        map.flyTo([halte.lat + LAT_OFFSET, halte.lng], 16, { animate: true, duration: 0.8 });
+        return;
+      }
+    }
+    map.flyToBounds(BOUNDS, { padding: [40, 40], animate: true, duration: 0.8 });
+  }, [selectedBusId, busStates]);
+
   return (
     <div className="map-panel">
+      {/* Center to Fleet / Bus floating button */}
+      <button
+        className="map-center-btn"
+        onClick={handleCenterFleet}
+        title={selectedBusId ? 'Fokus ke Bus yang Dipilih' : 'Tampilkan Semua Armada'}
+        aria-label={selectedBusId ? 'Fokus ke Bus yang Dipilih' : 'Tampilkan Semua Armada'}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" opacity="0.15" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="3" />
+          <line x1="12" y1="2" x2="12" y2="6" />
+          <line x1="12" y1="18" x2="12" y2="22" />
+          <line x1="2" y1="12" x2="6" y2="12" />
+          <line x1="18" y1="12" x2="22" y2="12" />
+        </svg>
+      </button>
+
       <MapContainer
         bounds={BOUNDS}
         style={{ width: '100%', height: '100%', borderRadius: '12px' }}
@@ -326,6 +362,7 @@ export default function MapPanel() {
         })()}
 
         <MapController />
+        <MapRefCapture mapRef={mapRef} />
       </MapContainer>
     </div>
   );
