@@ -2,6 +2,29 @@
 
 /* ===== DESIGN SYSTEM ===== */
 :root {
+  --bg-base: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f1f5f9;
+  --bg-hover: #e2e8f0;
+  --accent-green: #2d6a4f;
+  --accent-green-light: #40916c;
+  --accent-yellow: #e9c46a;
+  --accent-yellow-light: #f4d35e;
+  --accent-red: #d62828;
+  --accent-red-light: #e76f51;
+  --accent-blue: #3b82f6;
+  --text-primary: #0f172a;
+  --text-muted: #475569;
+  --text-dim: #64748b;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-light: rgba(0, 0, 0, 0.12);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
   --bg-base: #0f1419;
   --bg-surface: #1a1f2e;
   --bg-elevated: #212840;
@@ -18,10 +41,7 @@
   --text-dim: #6b7280;
   --border: rgba(255, 255, 255, 0.06);
   --border-light: rgba(255, 255, 255, 0.1);
-  --radius: 12px;
-  --radius-sm: 8px;
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-  --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @theme inline {
@@ -376,8 +396,16 @@ body {
   display: none;
 }
 
+.theme-toggle-label {
+  display: none;
+}
+
 @media (min-width: 640px) {
   .dashboard-header__logout-text {
+    display: inline;
+  }
+
+  .theme-toggle-label {
     display: inline;
   }
 }

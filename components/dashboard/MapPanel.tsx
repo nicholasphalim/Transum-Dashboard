@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
 import { divIcon } from 'leaflet';
+import { useTheme } from 'next-themes';
 import { useHalteStore } from '@/store/halteStore';
 import { HALTE_LIST } from '@/lib/halte-data';
 import { BUS_LIST } from '@/lib/bus-data';
@@ -238,6 +239,18 @@ function HalteMarker({ halte, state, prediction, isSelected, setSelectedHalte }:
 export default function MapPanel() {
   const { halteStates, busStates, selectedBusId, selectedHalteId, setSelectedHalte } = useHalteStore();
   const { getPrediction } = usePrediction();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDark = !mounted || resolvedTheme === 'dark';
+
+  const tileUrl = isDark
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
   return (
     <div className="map-panel">
@@ -248,7 +261,8 @@ export default function MapPanel() {
         attributionControl={false}
       >
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          key={tileUrl}
+          url={tileUrl}
           attribution='&copy; <a href="https://carto.com">CARTO</a>'
         />
 

@@ -7,6 +7,7 @@ import { useSimulator } from '@/hooks/useSimulator';
 import { useMqtt } from '@/hooks/useMqtt';
 import ConnectionStatus from '@/components/ui/ConnectionStatus';
 import SimulatorToggle from '@/components/ui/SimulatorToggle';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 function useLiveClock() {
   const [now, setNow] = useState<Date | null>(null);
@@ -75,6 +76,7 @@ export default function Header() {
       <div className="dashboard-header__controls">
         <ConnectionStatus status={connectionStatus} />
         <SimulatorToggle active={isSimulatorActive} onToggle={handleSimToggle} />
+        <ThemeToggle />
         <button className="dashboard-header__logout" onClick={handleLogout} title="Logout">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
