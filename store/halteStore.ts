@@ -8,10 +8,11 @@ interface HalteStore {
   busStates: Record<string, BusState>;
   selectedHalteId: string; // 'all' atau halte ID
   selectedBusId: string | null; // bus ID for map centering
-  connectionStatus: ConnectionStatus;
+  halteConnectionStatus: ConnectionStatus;
+  busConnectionStatus: ConnectionStatus;
   isSimulatorActive: boolean;
   chartHistory: ChartDataPoint[];
-  pendingRecords: MqttPayload[]; // buffer for SQLite persistence
+  pendingRecords: MqttPayload[]; // buffer for Supabase persistence
 
   // Actions
   initStates: () => void;
@@ -20,11 +21,15 @@ interface HalteStore {
   updateBusState: (payload: BusMqttPayload) => void;
   setSelectedHalte: (id: string) => void;
   setSelectedBus: (id: string | null) => void;
-  setConnectionStatus: (status: ConnectionStatus) => void;
+  setHalteConnectionStatus: (status: ConnectionStatus) => void;
+  setBusConnectionStatus: (status: ConnectionStatus) => void;
   setSimulatorActive: (active: boolean) => void;
   addChartPoint: (point: ChartDataPoint) => void;
   flushRecords: () => Promise<void>;
   resetAll: () => void;
+
+  // Legacy compatibility getter
+  connectionStatus: ConnectionStatus;
 }
 
 const DEFAULT_HALTE_STATE: HalteState = {
@@ -40,10 +45,21 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
   busStates: {},
   selectedHalteId: 'all',
   selectedBusId: null,
-  connectionStatus: 'connecting',
+  halteConnectionStatus: 'disconnected',
+  busConnectionStatus: 'disconnected',
   isSimulatorActive: false,
   chartHistory: [],
   pendingRecords: [],
+
+  // Legacy compatibility: returns 'connected' if at least halte is connected,
+  // 'simulating' if simulator is active, otherwise best status
+  get connectionStatus(): ConnectionStatus {
+    const state = get();
+    if (state.isSimulatorActive) return 'simulating';
+    if (state.halteConnectionStatus === 'connected') return 'connected';
+    if (state.halteConnectionStatus === 'connecting') return 'connecting';
+    return state.halteConnectionStatus;
+  },
 
   initStates: () => {
     const initial: Record<string, HalteState> = {};
@@ -81,7 +97,7 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
             history: newHistory,
           },
         },
-        // Also buffer the payload for SQLite persistence
+        // Also buffer the payload for Supabase persistence
         pendingRecords: [...state.pendingRecords, payload],
       };
     });
@@ -105,7 +121,8 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
 
   setSelectedHalte: (id) => set({ selectedHalteId: id, selectedBusId: null }),
   setSelectedBus: (id) => set({ selectedBusId: id, selectedHalteId: 'all' }),
-  setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setHalteConnectionStatus: (status) => set({ halteConnectionStatus: status }),
+  setBusConnectionStatus: (status) => set({ busConnectionStatus: status }),
   setSimulatorActive: (active) => set({ isSimulatorActive: active }),
 
   addChartPoint: (point) => {
@@ -155,7 +172,8 @@ export const useHalteStore = create<HalteStore>((set, get) => ({
       halteStates: initial,
       busStates: {},
       selectedBusId: null,
-      connectionStatus: 'connecting',
+      halteConnectionStatus: 'disconnected',
+      busConnectionStatus: 'disconnected',
       isSimulatorActive: false,
       chartHistory: [],
       pendingRecords: [],

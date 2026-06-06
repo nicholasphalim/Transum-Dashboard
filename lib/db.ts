@@ -1,18 +1,47 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn('⚠️ SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY belum diset di .env.local');
+// ── Lazy Supabase Client (only created when first used) ──
+let _supabase: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+  if (_supabase) return _supabase;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn('⚠️ SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY belum diset di .env.local');
+    return null;
+  }
+  _supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false },
+  });
+  return _supabase;
 }
 
-// ── Supabase Client (Service Role for backend use) ──
-export const supabase = createClient(supabaseUrl || '', supabaseServiceKey || '', {
-  auth: {
-    persistSession: false,
-  }
-});
+// Exported for backward compatibility
+export const supabase = {
+  from: (table: string) => {
+    const client = getSupabase();
+    if (!client) {
+      // Return a no-op proxy that won't crash
+      console.warn(`[DB] Supabase not configured — skipping operation on "${table}"`);
+      return {
+        insert: async () => ({ error: { message: 'Supabase not configured' } }),
+        select: () => ({
+          eq: function(this: any) { return this; },
+          gte: function(this: any) { return this; },
+          order: function(this: any) { return this; },
+          single: async function() { return { data: null, error: null }; },
+          then: (resolve: any) => resolve({ data: [], error: null, count: 0 }),
+        }),
+        update: () => ({
+          eq: async function() { return { error: null }; },
+        }),
+      } as any;
+    }
+    return client.from(table);
+  },
+};
 
 // ── Types ──
 export interface RecordInsert {

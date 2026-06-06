@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useHalteStore } from '@/store/halteStore';
 import { useSimulator } from '@/hooks/useSimulator';
-import { useMqtt } from '@/hooks/useMqtt';
+import { useMqttHalte, useMqttBus } from '@/hooks/useMqtt';
 import ConnectionStatus from '@/components/ui/ConnectionStatus';
 import SimulatorToggle from '@/components/ui/SimulatorToggle';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -23,22 +23,30 @@ function useLiveClock() {
 
 export default function Header() {
   const router = useRouter();
-  const { connectionStatus, isSimulatorActive, resetAll } = useHalteStore();
+  const {
+    halteConnectionStatus,
+    busConnectionStatus,
+    isSimulatorActive,
+    resetAll,
+  } = useHalteStore();
   const { start: startSim, stop: stopSim } = useSimulator();
-  const { disconnect: disconnectMqtt } = useMqtt();
+  const { disconnect: disconnectHalte } = useMqttHalte();
+  const { disconnect: disconnectBus } = useMqttBus();
   const now = useLiveClock();
 
   const handleSimToggle = () => {
     if (isSimulatorActive) {
       stopSim();
     } else {
-      disconnectMqtt();
+      disconnectHalte();
+      disconnectBus();
       startSim();
     }
   };
 
   const handleLogout = async () => {
-    disconnectMqtt();
+    disconnectHalte();
+    disconnectBus();
     stopSim();
     await fetch('/api/auth/logout', { method: 'POST' });
     resetAll();
@@ -58,6 +66,13 @@ export default function Header() {
     second: '2-digit',
   }) : '';
 
+  // Derive an overall display status for the combined indicator
+  const overallStatus = isSimulatorActive
+    ? 'simulating' as const
+    : halteConnectionStatus === 'connected'
+      ? 'connected' as const
+      : halteConnectionStatus;
+
   return (
     <header className="dashboard-header">
       <div className="dashboard-header__brand">
@@ -74,7 +89,10 @@ export default function Header() {
       </div>
 
       <div className="dashboard-header__controls">
-        <ConnectionStatus status={connectionStatus} />
+        <div className="connection-status-group">
+          <ConnectionStatus status={halteConnectionStatus} label="Halte" />
+          <ConnectionStatus status={busConnectionStatus} label="Bus" />
+        </div>
         <SimulatorToggle active={isSimulatorActive} onToggle={handleSimToggle} />
         <ThemeToggle />
         <button className="dashboard-header__logout" onClick={handleLogout} title="Logout">

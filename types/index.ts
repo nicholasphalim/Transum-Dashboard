@@ -87,6 +87,12 @@ export interface AggregatedMetrics {
 // MQTT Connection status
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'simulating';
 
+// Dual connection status (halte + bus)
+export interface DualConnectionStatus {
+  halte: ConnectionStatus;
+  bus: ConnectionStatus;
+}
+
 // Chart data point
 export interface ChartDataPoint {
   time: string;
@@ -107,10 +113,15 @@ export interface MqttConfig {
   username: string;
   password: string;
   topic: string;
-  busTopic: string;
   clientIdPrefix: string;
   reconnectPeriod: number;
   connectTimeout: number;
+}
+
+// Dual MQTT config from API
+export interface DualMqttConfig {
+  halte: MqttConfig;
+  bus: MqttConfig;
 }
 
 // Database: passenger record row

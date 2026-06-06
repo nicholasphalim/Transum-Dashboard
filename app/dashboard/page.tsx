@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useHalteStore, getSelectedMetrics } from '@/store/halteStore';
-import { useMqtt } from '@/hooks/useMqtt';
+import { useMqttHalte, useMqttBus } from '@/hooks/useMqtt';
 import { useSimulator } from '@/hooks/useSimulator';
 import HalteSelector from '@/components/dashboard/HalteSelector';
 import MetricCards from '@/components/dashboard/MetricCards';
@@ -21,7 +21,8 @@ const MapPanel = dynamic(() => import('@/components/dashboard/MapPanel'), {
 });
 
 export default function DashboardPage() {
-  const { connect: connectMqtt } = useMqtt();
+  const { connect: connectHalte } = useMqttHalte();
+  const { connect: connectBus } = useMqttBus();
   const { start: startSim } = useSimulator();
   const addChartPoint = useHalteStore(state => state.addChartPoint);
   const flushRecords = useHalteStore(state => state.flushRecords);
@@ -30,16 +31,20 @@ export default function DashboardPage() {
   const chartIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-connect MQTT with simulator fallback
+  // Auto-connect both MQTT brokers with simulator fallback
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
 
-    connectMqtt();
+    // Connect to halte MQTT broker (real data)
+    connectHalte();
 
-    // Fallback: jika tidak connected dalam 5 detik, start simulator
+    // Connect to bus MQTT broker (placeholder — will skip if not configured)
+    connectBus();
+
+    // Fallback: jika halte MQTT tidak connected dalam 5 detik, start simulator
     const fallbackTimer = setTimeout(() => {
-      const status = useHalteStore.getState().connectionStatus;
+      const status = useHalteStore.getState().halteConnectionStatus;
       if (status !== 'connected') {
         startSim();
       }
@@ -71,7 +76,7 @@ export default function DashboardPage() {
     };
   }, [addChartPoint, selectedHalteId]);
 
-  // SQLite flush interval — batch-persist buffered records every 10 seconds
+  // Supabase flush interval — batch-persist buffered records every 10 seconds
   useEffect(() => {
     flushIntervalRef.current = setInterval(() => {
       flushRecords();
