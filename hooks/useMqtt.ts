@@ -50,6 +50,10 @@ export function useMqttHalte() {
       try {
         const data = JSON.parse(payload.toString()) as MqttPayload;
         if (data.device_id && data.data) {
+          // Fallback: jika ESP32 mengirim timestamp kosong, isi dengan waktu browser
+          if (!data.timestamp) {
+            data.timestamp = new Date().toISOString();
+          }
           updateHalteState(data);
         }
       } catch {
