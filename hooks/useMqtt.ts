@@ -3,66 +3,149 @@
 import { useEffect, useRef } from 'react';
 import mqtt, { MqttClient } from 'mqtt';
 import { useHalteStore } from '@/store/halteStore';
-import type { MqttPayload, BusMqttPayload } from '@/types';
+import type { MqttPayload, BusMqttPayload, DualMqttConfig } from '@/types';
 
-export function useMqtt() {
+/**
+ * Hook for connecting to the Halte MQTT broker.
+ * Receives passenger waiting data from IoT sensors at bus stops.
+ */
+export function useMqttHalte() {
   const clientRef = useRef<MqttClient | null>(null);
-  const { setConnectionStatus, updateHalteState, updateBusState } = useHalteStore();
+  const { setHalteConnectionStatus, updateHalteState } = useHalteStore();
 
   const connect = async () => {
-    // Ambil config dari API route (agar kredensial tidak expose ke client)
     const res = await fetch('/api/mqtt-config');
     if (!res.ok) return;
-    const config = await res.json();
+    const config: DualMqttConfig = await res.json();
+    const halteConfig = config.halte;
 
-    setConnectionStatus('connecting');
+    if (!halteConfig.brokerUrl) {
+      console.warn('[MQTT Halte] No broker URL configured, skipping connection.');
+      return;
+    }
 
-    const clientId = `${config.clientIdPrefix}${Math.random().toString(16).slice(2, 10)}`;
+    setHalteConnectionStatus('connecting');
 
-    const client = mqtt.connect(config.brokerUrl, {
+    const clientId = `${halteConfig.clientIdPrefix}${Math.random().toString(16).slice(2, 10)}`;
+
+    const client = mqtt.connect(halteConfig.brokerUrl, {
       clientId,
-      username: config.username,
-      password: config.password,
+      username: halteConfig.username,
+      password: halteConfig.password,
       clean: true,
-      reconnectPeriod: config.reconnectPeriod,
-      connectTimeout: config.connectTimeout,
+      reconnectPeriod: halteConfig.reconnectPeriod,
+      connectTimeout: halteConfig.connectTimeout,
       protocolVersion: 4,
     });
 
     clientRef.current = client;
 
     client.on('connect', () => {
-      setConnectionStatus('connected');
-      client.subscribe(config.topic, { qos: 0 });
-      if (config.busTopic) {
-        client.subscribe(config.busTopic, { qos: 0 });
-      }
+      console.log('[MQTT Halte] Connected to', halteConfig.brokerUrl);
+      setHalteConnectionStatus('connected');
+      client.subscribe(halteConfig.topic, { qos: 0 });
     });
 
-    client.on('message', (topic: string, payload: Buffer) => {
+    client.on('message', (_topic: string, payload: Buffer) => {
       try {
-        if (topic.includes('/halte/')) {
-          const data = JSON.parse(payload.toString()) as MqttPayload;
-          if (data.device_id && data.data) {
-            updateHalteState(data);
+        const data = JSON.parse(payload.toString()) as MqttPayload;
+        if (data.device_id && data.data) {
+          // Fallback: jika ESP32 mengirim timestamp kosong, isi dengan waktu browser
+          if (!data.timestamp) {
+            data.timestamp = new Date().toISOString();
           }
-        } else if (topic.includes('/bus/')) {
-          const data = JSON.parse(payload.toString()) as BusMqttPayload;
-          if (data.device_id && data.data) {
-            updateBusState(data);
-          }
+          updateHalteState(data);
         }
       } catch {
         // Ignore non-JSON messages
       }
     });
 
-    client.on('error', () => {
-      setConnectionStatus('disconnected');
+    client.on('error', (err) => {
+      console.error('[MQTT Halte] Error:', err.message);
+      setHalteConnectionStatus('disconnected');
     });
 
-    client.on('reconnect', () => setConnectionStatus('connecting'));
-    client.on('close', () => setConnectionStatus('disconnected'));
+    client.on('reconnect', () => setHalteConnectionStatus('connecting'));
+    client.on('close', () => setHalteConnectionStatus('disconnected'));
+  };
+
+  const disconnect = () => {
+    clientRef.current?.end(true);
+    clientRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, []);
+
+  return { connect, disconnect };
+}
+
+/**
+ * Hook for connecting to the Bus MQTT broker.
+ * Receives in-bus passenger data from onboard IoT devices.
+ * Currently a placeholder — will connect when broker is configured.
+ */
+export function useMqttBus() {
+  const clientRef = useRef<MqttClient | null>(null);
+  const { setBusConnectionStatus, updateBusState } = useHalteStore();
+
+  const connect = async () => {
+    const res = await fetch('/api/mqtt-config');
+    if (!res.ok) return;
+    const config: DualMqttConfig = await res.json();
+    const busConfig = config.bus;
+
+    // Skip if no broker URL is configured (placeholder mode)
+    if (!busConfig.brokerUrl) {
+      console.log('[MQTT Bus] No broker configured — running in placeholder mode.');
+      setBusConnectionStatus('disconnected');
+      return;
+    }
+
+    setBusConnectionStatus('connecting');
+
+    const clientId = `${busConfig.clientIdPrefix}${Math.random().toString(16).slice(2, 10)}`;
+
+    const client = mqtt.connect(busConfig.brokerUrl, {
+      clientId,
+      username: busConfig.username,
+      password: busConfig.password,
+      clean: true,
+      reconnectPeriod: busConfig.reconnectPeriod,
+      connectTimeout: busConfig.connectTimeout,
+      protocolVersion: 4,
+    });
+
+    clientRef.current = client;
+
+    client.on('connect', () => {
+      console.log('[MQTT Bus] Connected to', busConfig.brokerUrl);
+      setBusConnectionStatus('connected');
+      client.subscribe(busConfig.topic, { qos: 0 });
+    });
+
+    client.on('message', (_topic: string, payload: Buffer) => {
+      try {
+        const data = JSON.parse(payload.toString()) as BusMqttPayload;
+        if (data.device_id && data.data) {
+          updateBusState(data);
+        }
+      } catch {
+        // Ignore non-JSON messages
+      }
+    });
+
+    client.on('error', (err) => {
+      console.error('[MQTT Bus] Error:', err.message);
+      setBusConnectionStatus('disconnected');
+    });
+
+    client.on('reconnect', () => setBusConnectionStatus('connecting'));
+    client.on('close', () => setBusConnectionStatus('disconnected'));
   };
 
   const disconnect = () => {

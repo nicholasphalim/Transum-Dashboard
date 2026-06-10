@@ -53,7 +53,7 @@ function initSimState() {
 let globalIntervalId: ReturnType<typeof setInterval> | null = null;
 
 export function useSimulator() {
-  const { updateHalteState, updateBusState, setConnectionStatus, setSimulatorActive } = useHalteStore();
+  const { updateHalteState, updateBusState, setHalteConnectionStatus, setBusConnectionStatus, setSimulatorActive } = useHalteStore();
 
   const start = (speed = 3000) => {
     initSimState();
@@ -86,7 +86,8 @@ export function useSimulator() {
       updateBusState(payload);
     });
 
-    setConnectionStatus('simulating');
+    setHalteConnectionStatus('simulating');
+    setBusConnectionStatus('simulating');
     setSimulatorActive(true);
 
     if (globalIntervalId) clearInterval(globalIntervalId);
