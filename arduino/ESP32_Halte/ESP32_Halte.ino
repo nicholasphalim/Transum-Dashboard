@@ -149,6 +149,9 @@ void setup_wifi() {
     if (++tries > 40) { ESP.restart(); }
   }
   Serial.println(" OK! IP: " + WiFi.localIP().toString());
+  
+  // FIX: Mencegah WiFi ESP32 terputus karena power saving
+  WiFi.setSleep(false);
 }
 
 void mqttReconnect() {
@@ -195,6 +198,9 @@ void setup() {
   espClient.setInsecure();
   client.setServer(mqtt_server, mqtt_port);
   client.setBufferSize(512);
+  client.setKeepAlive(60); // FIX: Memperpanjang batas waktu idle agar tidak diputus HiveMQ
+  
+  randomSeed(micros());    // FIX: Memastikan ID acak benar-benar berbeda setiap restart
   mqttReconnect();
 
   Serial.println("\n--- Sensor siap ---");
